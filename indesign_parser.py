@@ -41,6 +41,9 @@ def process_excel_to_indesign(file_path):
             date_str = row_vals[2]
             raw_name = row_vals[3]
             
+            # ДОБАВЛЕНО: Извлекаем статус оплаты заказа напрямую из строки
+            is_paid = "Оплачен" in row_vals[1]
+            
             photos_raw = row_vals[8] if len(row_vals) > 8 else "" 
             
             # Всеядный парсинг даты через pandas
@@ -54,12 +57,12 @@ def process_excel_to_indesign(file_path):
                 orders_data[order_id] = {
                     "name": raw_name,
                     "photos": photos_raw,
-                    "parsed_date": parsed_date
+                    "parsed_date": parsed_date,
+                    "is_paid": is_paid  # Сохраняем статус оплаты для последующей фильтрации
                 }
                 
         # --- БЛОК 2: Сбор цитат ---
-        # ИСПРАВЛЕНИЕ: Определяем строку начала блока цитат по длине ID заказа (> 4 символов).
-        # Это позволяет корректно переключать ID как для оплаченных, так и для неоплаченных заказов.
+        # Определяем строку начала блока цитат по длине ID заказа (> 4 символов).
         if row_vals[0].isdigit() and len(row_vals[0]) > 4:
             current_order_id = row_vals[0]
             
@@ -96,13 +99,31 @@ def process_excel_to_indesign(file_path):
         
         quote = quotes_data.get(order_id, "")
         
-        if user_key not in users_final or data['parsed_date'] > users_final.get(user_key, {}).get('parsed_date', pd.Timestamp.min):
+        # ИЗМЕНЕНО: Новая каскадная логика фильтрации дубликатов по правилам оплаты и дат
+        overwrite = False
+        if user_key not in users_final:
+            overwrite = True
+        else:
+            existing = users_final[user_key]
+            # 1. Если новый заказ оплачен, а старый сохраненный нет — берем оплаченный
+            if data['is_paid'] and not existing['is_paid']:
+                overwrite = True
+            # 2. Если новый не оплачен, а старый оплачен — игнорируем новый
+            elif not data['is_paid'] and existing['is_paid']:
+                overwrite = False
+            # 3. Если оба оплачены или оба НЕ оплачены — берем тот, что позже по дате
+            else:
+                if data['parsed_date'] > existing['parsed_date']:
+                    overwrite = True
+                    
+        if overwrite:
             users_final[user_key] = {
                 "last_name": last_name,
                 "first_name": first_name,
                 "photos": formatted_photos,
                 "quote": quote,
-                "parsed_date": data['parsed_date']
+                "parsed_date": data['parsed_date'],
+                "is_paid": data['is_paid']  # Сохраняем статус для последующих сравнений
             }
 
     # --- Экспорт в файл ---
