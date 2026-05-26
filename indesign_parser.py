@@ -58,13 +58,17 @@ def process_excel_to_indesign(file_path):
                 }
                 
         # --- БЛОК 2: Сбор цитат ---
-        if row_vals[0].isdigit() and "Оплачен" in row_vals:
+        # ИСПРАВЛЕНИЕ: Определяем строку начала блока цитат по длине ID заказа (> 4 символов).
+        # Это позволяет корректно переключать ID как для оплаченных, так и для неоплаченных заказов.
+        if row_vals[0].isdigit() and len(row_vals[0]) > 4:
             current_order_id = row_vals[0]
             
         if "Большое текстовое поле" in row_vals:
             idx = row_vals.index("Большое текстовое поле")
             if len(row_vals) > idx + 1:
-                quote = row_vals[idx + 1].strip('"') 
+                # Убираем кавычки и заменяем внутренние переносы строк на пробелы, 
+                # чтобы текст цитаты гарантированно оставался на одной строчке
+                quote = row_vals[idx + 1].strip('"').replace('\n', ' ').replace('\r', ' ')
                 if current_order_id and quote:
                     quotes_data[current_order_id] = quote
 
